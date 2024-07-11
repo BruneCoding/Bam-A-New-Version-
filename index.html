@@ -1,0 +1,406 @@
+<!-- This is bam. It is currently on https://the-bam-game.pages.dev  -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrunBlock</title>
+  <style>
+    body {
+      font-family: "Luckiest Guy", cursive;
+      margin: 0;
+      overflow: hidden;
+      background: skyblue;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    canvas {
+      display: block;
+      background: skyblue;
+    }
+
+    .midCursor {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      z-index: 9;
+      color: white;
+      font-size: 2rem;
+    }
+
+    .score {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 2rem;
+      color: white;
+      z-index: 10;
+    }
+
+    .esc-menu {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      font-size: 2rem;
+      color: white;
+      z-index: 11;
+      padding: 25px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    h1 {
+      draggable: false;
+    }
+
+    .esc-menu h1 {
+      position: absolute;
+      font-size: 1rem;
+      color: grey;
+      margin: 0;
+    }
+
+    .health-bar-container {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 200px;
+      height: 20px;
+      border-radius: 5px;
+      border: 5px solid white;
+      background: transparent;
+      backdrop-filter: blur(20px);
+      z-index: 10;
+      box-shadow: 0 0 25px rgba(153, 255, 153, 0.3);
+    }
+
+    .health-bar {
+      height: 100%;
+      width: 100%;
+      background: red;
+      transition: width 0.2s;
+      box-shadow: 0 0 100px red;
+    }
+
+    .game-over {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      font-weight: bold;
+      font-size: 4rem;
+      font-family: "Luckiest Guy", cursive;
+      backdrop-filter: blur(35px);
+      box-shadow: 0 0 100px rgba(255, 255, 255, 0.5);
+      background: radial-gradient(rgba(178, 0, 0, 0), rgba(178, 0, 0, 0.3));
+      font-size: 3rem;
+      color: red;
+      z-index: 10;
+      display: none;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .game-over h1 {
+      -webkit-text-stroke: 3px white;
+    }
+
+    .highlight {
+      position: absolute;
+      border: 10px solid black;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div draggable="false" class="midCursor">+</div>
+  <div draggable="false" class="score">Score: 0</div>
+  <div class="health-bar-container">
+    <div class="health-bar"></div>
+  </div>
+  <div class="game-over">
+    <h1 draggable="false">Game Over!</h1 draggable>
+  </div>
+
+  <div class="esc-menu">
+    <h1 draggable="false"> P </h1>
+    <i id="play" class="fa-solid fa-play"></i>
+    <i id="pause" style="display: none" class="fa-solid fa-pause"></i>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 10, 7.5).normalize();
+    scene.add(directionalLight);
+    const floorSize = 50;
+    const blockSize = 1;
+    const blocks = [];
+    const floorMaterial = new THREE.MeshPhongMaterial({
+      color: 0x8B4513
+    });
+    for (let i = -floorSize / 2; i < floorSize / 2; i++) {
+      for (let j = -floorSize / 2; j < floorSize / 2; j++) {
+        const block = new THREE.Mesh(new THREE.BoxGeometry(blockSize, blockSize, blockSize), floorMaterial);
+        block.position.set(i * blockSize, -0.5 * blockSize, j * blockSize);
+        scene.add(block);
+        blocks.push(block);
+      }
+    }
+    const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
+    const playerMaterial = new THREE.MeshPhongMaterial({
+      color: 0x00ff00
+    });
+    const player = new THREE.Mesh(playerGeometry, playerMaterial);
+    player.position.y = 1;
+    scene.add(player);
+    let score = 0;
+    const scoreElement = document.querySelector('.score');
+    let health = 100;
+    const healthBar = document.querySelector('.health-bar');
+    const maxHealth = 100;
+    const gameOverElement = document.querySelector('.game-over');
+    let enemy;
+
+    function createEnemy() {
+      const enemyGeometry = new THREE.BoxGeometry(1, 2, 1);
+      const enemyMaterial = new THREE.MeshPhongMaterial({
+        color: 0xff0000
+      });
+      enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
+      enemy.position.set(Math.random() * 20 - 10, 1, Math.random() * 20 - 10);
+      scene.add(enemy);
+      // Create health bar for enemy
+      const healthBarGeometry = new THREE.BoxGeometry(1, 0.2, 0.2);
+      const healthBarMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ff00
+      });
+      const enemyHealthBar = new THREE.Mesh(healthBarGeometry, healthBarMaterial);
+      enemyHealthBar.position.set(0, 2.5, 0); // Position above the enemy
+      enemy.add(enemyHealthBar);
+      enemy.health = 100; // Initial health
+    }
+    createEnemy();
+    let enemyAlive = true;
+    const bullets = [];
+
+    function shootBullet() {
+      const bulletGeometry = new THREE.BoxGeometry(0.2, 0.2, 1.5);
+      const bulletMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff00
+      });
+      const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+      bullet.position.copy(camera.position);
+      bullet.quaternion.copy(camera.quaternion);
+      scene.add(bullet);
+      bullets.push(bullet);
+      const bulletVelocity = new THREE.Vector3();
+      camera.getWorldDirection(bulletVelocity);
+      bulletVelocity.multiplyScalar(3);
+      const bulletInterval = setInterval(() => {
+        bullet.position.add(bulletVelocity);
+        if (bullet.position.distanceTo(camera.position) > 100) {
+          scene.remove(bullet);
+          bullets.splice(bullets.indexOf(bullet), 1);
+          clearInterval(bulletInterval);
+        }
+      }, 16);
+    }
+    camera.position.y = 2;
+    camera.position.z = 5;
+    const controls = new THREE.PointerLockControls(camera, document.body);
+    document.addEventListener('click', () => {
+      controls.lock();
+    });
+    let moveForward = false;
+    let moveBackward = false;
+    let moveLeft = false;
+    let moveRight = false;
+    let canJump = false;
+    const velocity = new THREE.Vector3();
+    const direction = new THREE.Vector3();
+    const onKeyDown = (event) => {
+      switch (event.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+          moveForward = true;
+          break;
+        case 'ArrowLeft':
+        case 'KeyA':
+          moveLeft = true;
+          break;
+        case 'ArrowDown':
+        case 'KeyS':
+          moveBackward = true;
+          break;
+        case 'ArrowRight':
+        case 'KeyD':
+          moveRight = true;
+          break;
+        case 'Space':
+          if (canJump) {
+            velocity.y = 5;
+            canJump = false;
+          }
+          break;
+        case 'KeyF':
+          if (controls.isLocked) {
+            shootBullet();
+          }
+          break;
+      }
+    };
+    const onKeyUp = (event) => {
+      switch (event.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+          moveForward = false;
+          break;
+        case 'ArrowLeft':
+        case 'KeyA':
+          moveLeft = false;
+          break;
+        case 'ArrowDown':
+        case 'KeyS':
+          moveBackward = false;
+          break;
+        case 'ArrowRight':
+        case 'KeyD':
+          moveRight = false;
+          break;
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+    const highlightBox = new THREE.BoxHelper();
+    highlightBox.material.color.set(0x000000);
+    highlightBox.visible = false;
+    scene.add(highlightBox);
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (controls.isLocked) {
+        const delta = 0.1;
+        velocity.x -= velocity.x * 10.0 * delta;
+        velocity.z -= velocity.z * 10.0 * delta;
+        velocity.y -= 3.8 * delta;
+        direction.z = Number(moveForward) - Number(moveBackward);
+        direction.x = Number(moveLeft) - Number(moveRight);
+        direction.normalize();
+        if (moveForward || moveBackward) {
+          camera.getWorldDirection(direction);
+          velocity.z -= direction.z * 20.0 * delta;
+          velocity.x -= direction.x * 20.0 * delta;
+        }
+        if (moveLeft || moveRight) {
+          const right = new THREE.Vector3();
+          camera.getWorldDirection(right);
+          right.crossVectors(camera.up, right);
+          velocity.x -= right.x * direction.x * 20.0 * delta;
+          velocity.z -= right.z * direction.x * 20.0 * delta;
+        }
+        player.position.x -= velocity.x * delta;
+        player.position.z -= velocity.z * delta;
+        player.position.y += velocity.y * delta;
+        if (player.position.y < 1) {
+          velocity.y = 0;
+          player.position.y = 1;
+          canJump = true;
+        }
+        camera.position.copy(player.position).add(new THREE.Vector3(0, 2, 0));
+        player.rotation.y = camera.rotation.y;
+        if (enemyAlive) {
+          const enemyDirection = new THREE.Vector3();
+          enemyDirection.subVectors(player.position, enemy.position).normalize();
+          enemy.position.addScaledVector(enemyDirection, 0.05);
+          if (enemy.position.distanceTo(player.position) < 1.5) {
+            health -= 1;
+            healthBar.style.width = `${health}%`;
+            if (health <= 0) {
+              gameOverElement.style.display = 'block';
+              const score = document.querySelector('.score');
+              score.style.top = "50%";
+              score.style.left = "50%";
+              score.style.transfrom = "translate(-50%, -50%)";
+              score.style.zIndex = "top";
+              controls.unlock();
+              return;
+            }
+          }
+        }
+        bullets.forEach(bullet => {
+          if (bullet.position.distanceTo(enemy.position) < 1) {
+            // Reduce enemy health
+            enemy.health -= 50;
+            if (enemy.health <= 0) {
+              scene.remove(enemy);
+              score++;
+              scoreElement.textContent = `Score: ${score}`;
+              createEnemy();
+              enemyAlive = true;
+            }
+          }
+        });
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects([enemy]);
+        if (intersects.length > 0) {
+          if (controls.isLocked && mouseDown) {
+            handleEnemyClick();
+          } else {
+            highlightBox.visible = true;
+            highlightBox.position.copy(enemy.position);
+          }
+        } else {
+          highlightBox.visible = false;
+        }
+      }
+      renderer.render(scene, camera);
+    }
+    animate();
+    window.addEventListener('resize', () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      renderer.setSize(width, height);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    });
+    let mouseDown = false;
+    document.addEventListener('mousedown', () => {
+      mouseDown = true;
+    });
+    document.addEventListener('mouseup', () => {
+      mouseDown = false;
+    });
+
+    function handleEnemyClick() {
+      scene.remove(enemy);
+      enemyAlive = false;
+      score++;
+      scoreElement.textContent = `Score: ${score}`;
+      createEnemy();
+      enemyAlive = true;
+    }
+  </script>
+</body>
+
+</html>
